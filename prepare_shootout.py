@@ -63,6 +63,7 @@ def convert_wiki(infile, processes=multiprocessing.cpu_count()):
     # process the corpus in smaller chunks of docs, because multiprocessing.Pool
     # is dumb and would try to load the entire dump into RAM...
     texts = gensim.corpora.wikicorpus._extract_pages(bz2.BZ2File(infile))  # generator
+    ignore_namespaces = 'Wikipedia Category File Portal Template MediaWiki User Help Book Draft'.split()
     for group in gensim.utils.chunkize(texts, chunksize=10 * processes):
         for title, tokens in pool.imap(process_article, group):
             if articles_all % 100000 == 0:
@@ -70,10 +71,15 @@ def convert_wiki(infile, processes=multiprocessing.cpu_count()):
                     (articles_all, title, articles, positions))
             articles_all += 1
             positions_all += len(tokens)
-            if len(tokens) >= MIN_WORDS and not title.startswith('Wikipedia:'): # article redirects and short stubs are pruned here
-                articles += 1
-                positions += len(tokens)
-                yield title, tokens
+
+            # article redirects and short stubs are pruned here
+            if len(tokens) < MIN_WORDS or any(title.startswith(ignore + ':') for ignore in ignore_namespaces):
+                continue
+
+            # all good: use this article
+            articles += 1
+            positions += len(tokens)
+            yield title, tokens
     pool.terminate()
 
     logger.info("finished iterating over Wikipedia corpus of %i documents with %i positions"
